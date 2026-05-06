@@ -23,16 +23,16 @@
     "use strict";
 
     //--- Settings
-    var playerHeight = '100vh';
-    var enableOnLoad = true;
-    var scriptToggleKey = 'w';
+    const playerHeight = '100vh';
+    const enableOnLoad = true;
+    const scriptToggleKey = 'w';
 
     //--- Imported Globals
     // yt
     // ytcenter
     // html5Patched (Youtube+)
     // ytplayer
-    var uw = window;
+    const uw = window;
 
     //--- Already Loaded?
     // GreaseMonkey loads this script twice for some reason.
@@ -51,21 +51,21 @@
     //--- Utils
     function isStringType(obj) { return typeof obj === 'string'; }
     function isArrayType(obj) { return obj instanceof Array; }
-    function isObjectType(obj) { return typeof obj === 'object'; }
+    function isObjectType(obj) { return typeof obj === 'object' && obj !== null; }
     function isUndefined(obj) { return typeof obj === 'undefined'; }
     function buildVenderPropertyDict(propertyNames, value) {
-        var d = {};
-        for (var i in propertyNames)
+        const d = {};
+        for (const i in propertyNames)
             d[propertyNames[i]] = value;
         return d;
     }
-    function observe(selector, config, callback) {
-        var observer = new MutationObserver(function(mutations) {
+    function observe(selectorOrTarget, config, callback) {
+        const observer = new MutationObserver(function(mutations) {
             mutations.forEach(function(mutation){
                 callback(mutation);
             });
         });
-        var target = document.querySelector(selector);
+        const target = isStringType(selectorOrTarget) ? document.querySelector(selectorOrTarget) : selectorOrTarget;
         if (!target) {
             return null;
         }
@@ -74,40 +74,43 @@
     }
 
     //--- Stylesheet
-    var JSStyleSheet = function(id) {
+    const JSStyleSheet = function(id) {
         this.id = id;
-        this.stylesheet = '';
+        this.rules = [];
     };
 
     JSStyleSheet.prototype.buildRule = function(selector, styles) {
-        var s = "";
-        for (var key in styles) {
+        let s = "";
+        for (const key in styles) {
             s += "\t" + key + ": " + styles[key] + ";\n";
         }
         return selector + " {\n" + s + "}\n";
     };
 
+    // Accepts either (selector, stylesObject) or (selector, property, value).
     JSStyleSheet.prototype.appendRule = function(selector, k, v) {
         if (isArrayType(selector))
             selector = selector.join(',\n');
-        var newStyle;
-        if (!isUndefined(k) && !isUndefined(v) && isStringType(k)) { // v can be any type (as we stringify it).
-            var d = {};
-            d[k] = v;
-            newStyle = this.buildRule(selector, d);
-        } else if (!isUndefined(k) && isUndefined(v) && isObjectType(k)) {
-            newStyle = this.buildRule(selector, k);
+        let styles;
+        if (isStringType(k) && !isUndefined(v)) {
+            styles = {};
+            styles[k] = v;
+        } else if (isObjectType(k) && isUndefined(v)) {
+            styles = k;
         } else {
-            // Invalid Arguments
-            console.log('Illegal arguments', arguments);
+            console.log('JSStyleSheet.appendRule: illegal arguments', arguments);
             return;
         }
+        this.rules.push(this.buildRule(selector, styles));
+    };
 
-        this.stylesheet += newStyle;
+    // Appends a raw CSS string (e.g. @media blocks) directly to the stylesheet.
+    JSStyleSheet.prototype.appendRaw = function(str) {
+        this.rules.push(str);
     };
 
     JSStyleSheet.injectIntoHeader = function(injectedStyleId, stylesheet) {
-        var styleElement = document.getElementById(injectedStyleId);
+        let styleElement = document.getElementById(injectedStyleId);
         if (!styleElement) {
             styleElement = document.createElement('style');
             styleElement.type = 'text/css';
@@ -118,76 +121,27 @@
     };
 
     JSStyleSheet.prototype.injectIntoHeader = function() {
-        JSStyleSheet.injectIntoHeader(this.id, this.stylesheet);
+        JSStyleSheet.injectIntoHeader(this.id, this.rules.join(''));
     };
 
-    //--- History
-    var HistoryEvent = function() {}
-    HistoryEvent.listeners = []
-
-    HistoryEvent.dispatch = function(state, title, url) {
-      var stack = this.listeners
-      for (var i = 0, l = stack.length; i < l; i++) {
-        stack[i].call(this, state, title, url)
-      }
-    }
-    HistoryEvent.onPushState = function(state, title, url) {
-        HistoryEvent.dispatch(state, title, url)
-        return HistoryEvent.origPushState.apply(window.history, arguments)
-    }
-    HistoryEvent.onReplaceState = function(state, title, url) {
-        HistoryEvent.dispatch(state, title, url)
-        return HistoryEvent.origReplaceState.apply(window.history, arguments)
-    }
-    HistoryEvent.inject = function() {
-        if (!HistoryEvent.injected) {
-            HistoryEvent.origPushState = window.history.pushState
-            HistoryEvent.origReplaceState = window.history.replaceState
-
-            window.history.pushState = HistoryEvent.onPushState
-            window.history.replaceState = HistoryEvent.onReplaceState
-            HistoryEvent.injected = true
-        }
-    }
-
-    HistoryEvent.timerId = 0
-    HistoryEvent.onTick = function() {
-        var currentPage = window.location.pathname + window.location.search
-        if (HistoryEvent.lastPage != currentPage) {
-            HistoryEvent.dispatch({}, document.title, window.location.href)
-            HistoryEvent.lastPage = currentPage
-        }
-    }
-    HistoryEvent.startTimer = function() {
-        HistoryEvent.lastPage = window.location.pathname + window.location.search
-        HistoryEvent.timerId = setInterval(HistoryEvent.onTick, 500)
-    }
-    HistoryEvent.stopTimer = function() {
-        clearInterval(HistoryEvent.timerId)
-    }
-    window.ytwpHistoryEvent = HistoryEvent
-
-
     //--- Constants
-    var scriptShortName = 'ytwp'; // YT Window Player
-    var scriptStyleId = scriptShortName + '-style'; // ytwp-style
-    var scriptBodyClassId = scriptShortName + '-window-player'; // .ytwp-window-player
-    var viewingVideoClassId = scriptShortName + '-viewing-video'; // .ytwp-viewing-video
-    var topOfPageClassId = scriptShortName + '-scrolltop'; // .ytwp-scrolltop
+    const scriptShortName = 'ytwp'; // YT Window Player
+    const scriptStyleId = scriptShortName + '-style'; // ytwp-style
+    const scriptBodyClassId = scriptShortName + '-window-player'; // .ytwp-window-player
+    const viewingVideoClassId = scriptShortName + '-viewing-video'; // .ytwp-viewing-video
+    const topOfPageClassId = scriptShortName + '-scrolltop'; // .ytwp-scrolltop
 
-    var scriptHtmlSelector = 'html:not([fullscreen="true"])';
-    var scriptBodySelector = 'body.' + scriptBodyClassId; // body.ytwp-window-player
-    scriptBodySelector += ':not(.enhancer-for-youtube-pinned-player)'; // Support "Enhancer for Youtube" (Pull Request #51)
-    var scriptSelector = scriptHtmlSelector + ' ' + scriptBodySelector;
+    const scriptHtmlSelector = 'html:not([fullscreen="true"])';
+    let scriptBodySelector = 'body.' + scriptBodyClassId; // body.ytwp-window-player
+    scriptBodySelector += ':not(.efyt-mini-player)'; // Support "Enhancer for Youtube" (Pull Request #51)
 
-    var videoContainerId = 'player';
-    var videoContainerPlacemarkerId = scriptShortName + '-placemarker'; // ytwp-placemarker
+    let scriptSelector = scriptHtmlSelector + ' ' + scriptBodySelector;
 
-    var transitionProperties = ["transition", "-ms-transition", "-moz-transition", "-webkit-transition", "-o-transition"];
-    var transformProperties = ["transform", "-ms-transform", "-moz-transform", "-webkit-transform", "-o-transform"];
+    const transitionProperties = ["transition", "-ms-transition", "-moz-transition", "-webkit-transition", "-o-transition"];
+    const transformProperties = ["transform", "-ms-transform", "-moz-transform", "-webkit-transform", "-o-transform"];
 
     //--- YTWP
-    var ytwp = uw.ytwp = {
+    const ytwp = uw.ytwp = {
         scriptShortName: scriptShortName, // YT Window Player
         log_: function(logger, args) { logger.apply(console, ['[' + this.scriptShortName + '] '].concat(Array.prototype.slice.call(args))); return 1; },
         log: function() { return this.log_(console.log, arguments); },
@@ -196,14 +150,19 @@
         initialized: false,
         pageReady: false,
         isWatchPage: false,
+        scrollerInitialized: false,
+        playerObservers: [],
+        playerObserverRefreshTimer: 0,
+        playerUpdateTimer: 0,
+        maintenanceTimerId: 0,
     };
 
     ytwp.debugPage = function() {
         function prettyHtml(el) {
-            var s = el.outerHTML
+            const s = el.outerHTML
             return s.substr(0, s.indexOf('>')+1)
         }
-        var defStyle = {
+        const defStyle = {
             'display':'block', 'position': 'static',
             'left': 'auto', 'right': 'auto', 'top': 'auto', 'bottom': 'auto',
             'padding-left':'0px', 'padding-right':'0px', 'padding-top':'0px', 'padding-bottom':'0px',
@@ -211,13 +170,13 @@
             'width': 'auto', 'min-width': 'auto', 'max-width': 'auto',
             'height': 'auto', 'min-height': 'auto', 'max-height': 'auto',
         }
-        var keyFilter = Object.keys(defStyle)
-        var node = document.querySelector('#movie_player video')
-        var outStr = ''
+        const keyFilter = Object.keys(defStyle)
+        let node = document.querySelector('#movie_player video')
+        let outStr = ''
         while (node && node.parentNode) {
-            var style = getComputedStyle(node)
-            var styleDiff = {}
-            for (var key of style) {
+            const style = getComputedStyle(node)
+            const styleDiff = {}
+            for (const key of style) {
                 if (keyFilter.includes(key) && style[key] != defStyle[key]) {
                     styleDiff[key] = style[key]
                 }
@@ -230,7 +189,7 @@
     }
 
     ytwp.hasYoutubeChanged = function() {
-        var tree = [
+        const tree = [
             'html',
             'body',
             'ytd-app',
@@ -246,19 +205,20 @@
             '.html5-video-container',
             'video.html5-main-video',
         ]
-        tree = tree.reverse()
-        var node = document.querySelector(tree[0])
+        tree.reverse()
+        let node = document.querySelector(tree[0])
         if (!node) {
             ytwp.error('YT has changed!', tree[0], 'no longer exists!')
             return true
         }
-        for (var i = 1; i < tree.length; i++) {
-            var parent = node.parentNode
-            var selector = tree[i]
+        for (let i = 1; i < tree.length; i++) {
+            const parent = node.parentNode
+            const selector = tree[i]
             if (parent.matches(selector)) {
                 node = parent
             } else {
-                ytwp.error('YT has changed!', selector, 'no longer exists!')
+                ytwp.error('YT has changed!', selector, 'no longer matches! parent is:', parent)
+                return true
             }
         }
         return false
@@ -277,37 +237,54 @@
         return url.match(/https?:\/\/(www\.)?youtube.com\/watch\?/);
     };
 
-    ytwp.setTheaterMode = function(enable) {
-        // ytwp.log('setTheaterMode', enable)
+    ytwp.getActiveWatchElement = function() {
+        return document.querySelector('ytd-watch:not([hidden])')
+            || document.querySelector('ytd-watch-flexy:not([hidden])')
+            || document.querySelector('ytd-watch-grid:not([hidden])')
+            || document.querySelector('#page.watch');
+    };
 
-        var watchElement = document.querySelector('ytd-watch:not([hidden])') || document.querySelector('ytd-watch-flexy:not([hidden])') || document.querySelector('ytd-watch-grid:not([hidden])')
-        if (watchElement) {
-            var isTheater = watchElement.hasAttribute('theater')
-            if (enable != isTheater) {
-                // Note: (Issue #75) ytd-watch-flexy watchElement.querySelector() will find
-                // Nothing for some reason. We need to query from the document scope.
-                var sizeButton = document.querySelector(watchElement.tagName + ':not([hidden]) button.ytp-size-button')
-                if (!sizeButton) {
-                    var screenModeButtons = document.querySelectorAll(watchElement.tagName + ':not([hidden]) button.ytp-screen-mode-settings-button')
-                    sizeButton = screenModeButtons[1] // 2nd button is "Theater mode (t)"
-                }
-                if (sizeButton) {
-                    sizeButton.click()
-                }
+    ytwp.isWatchElementInTheaterMode = function(watchElement) {
+        if (!watchElement) {
+            return false;
+        }
+        if (watchElement.matches('#page.watch')) {
+            return watchElement.classList.contains('watch-stage-mode');
+        }
+        return watchElement.hasAttribute('theater');
+    };
+
+    ytwp.setTheaterMode = function(enable) {
+        let watchElement = ytwp.getActiveWatchElement();
+        if (!watchElement) {
+            return;
+        }
+
+        const isTheater = ytwp.isWatchElementInTheaterMode(watchElement);
+        if (enable == isTheater) {
+            if (!watchElement.matches('#page.watch')) {
+                watchElement.canFitTheater_ = true // When it's too small, it disables the theater mode.
+            }
+            return;
+        }
+
+        let sizeButton = null;
+        if (!watchElement.matches('#page.watch')) {
+            sizeButton = document.querySelector(watchElement.tagName + ':not([hidden]) button.ytp-size-button')
+            if (!sizeButton) {
+                const screenModeButtons = document.querySelectorAll(watchElement.tagName + ':not([hidden]) button.ytp-screen-mode-settings-button')
+                sizeButton = screenModeButtons[1] // 2nd button is "Theater mode (t)"
             }
             watchElement.canFitTheater_ = true // When it's too small, it disables the theater mode.
-        } else if (watchElement = document.querySelector('#page.watch')) {
-            var isTheater = watchElement.classList.contains('watch-stage-mode')
-            if (enable != isTheater) {
-                var sizeButton = watchElement.querySelector('button.ytp-size-button')
-                if (sizeButton) {
-                    sizeButton.click()
-                }
-            }
+        } else {
+            sizeButton = watchElement.querySelector('button.ytp-size-button')
+        }
+
+        if (sizeButton) {
+            sizeButton.click()
         }
     }
     ytwp.enterTheaterMode = function() {
-        // ytwp.log('enterTheaterMode')
         if (!document.body.classList.contains(scriptBodyClassId)) {
             return
         }
@@ -315,14 +292,18 @@
         ytwp.setTheaterMode(true)
     }
     ytwp.enterTheaterMode();
-    uw.addEventListener('resize', ytwp.enterTheaterMode);
+
+    let _resizeTimer = 0;
+    uw.addEventListener('resize', function() {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(ytwp.enterTheaterMode, 50);
+    });
 
     ytwp.detectPlayerUnavailable = function() {
         if (document.querySelector('[player-unavailable]')) {
             ytwp.event.removeBodyClass()
         }
     }
-
 
     ytwp.init = function() {
         ytwp.log('init');
@@ -334,38 +315,37 @@
                     ytwp.event.initStyle();
                 }
                 ytwp.initScroller();
+                ytwp.startMaintenanceTimer();
                 ytwp.initialized = true;
                 ytwp.pageReady = false;
             }
         }
         ytwp.event.onWatchInit();
-        if (ytwp.isWatchPage) {
-            ytwp.html5PlayerFix();
-        }
     }
 
     ytwp.initScroller = function() {
-        // Register listener & Call it now.
-        uw.addEventListener('scroll', ytwp.onScroll, false);
-        uw.addEventListener('resize', ytwp.onScroll, false);
+        if (!ytwp.scrollerInitialized) {
+            // Register once; onScroll already gates itself by ytwp.isWatchPage.
+            uw.addEventListener('scroll', ytwp.onScroll, false);
+            uw.addEventListener('resize', ytwp.onScroll, false);
+            ytwp.scrollerInitialized = true;
+        }
         ytwp.onScroll();
     }
 
     ytwp.onScroll = function() {
-        var viewportHeight = document.documentElement.clientHeight;
+        const scrollY = uw.scrollY;
+        const viewportHeight = document.documentElement.clientHeight;
 
         // topOfPageClassId
-        if (ytwp.isWatchPage && uw.scrollY == 0) {
+        if (ytwp.isWatchPage && scrollY == 0) {
             document.body.classList.add(topOfPageClassId);
-            //var player = document.getElementById('movie_player');
-            //if (player)
-            //    player.focus();
         } else {
             document.body.classList.remove(topOfPageClassId);
         }
 
         // viewingVideoClassId
-        if (ytwp.isWatchPage && uw.scrollY <= viewportHeight) {
+        if (ytwp.isWatchPage && scrollY <= viewportHeight) {
             document.body.classList.add(viewingVideoClassId);
         } else {
             document.body.classList.remove(viewingVideoClassId);
@@ -379,7 +359,8 @@
             ytwp.event.buildStylesheet();
             // Duplicate stylesheet targeting data-spf-name if enabled.
             if (uw.spf) {
-                var temp = scriptBodySelector;
+                const savedBodySelector = scriptBodySelector;
+                const savedSelector = scriptSelector;
                 scriptBodySelector = 'body[data-spf-name="watch"]';
                 scriptSelector = scriptHtmlSelector + ' ' + scriptBodySelector
                 ytwp.event.buildStylesheet();
@@ -387,12 +368,24 @@
                     'position': 'absolute',
                     'top': playerHeight + ' !important'
                 });
+                scriptBodySelector = savedBodySelector;
+                scriptSelector = savedSelector;
             }
             ytwp.style.injectIntoHeader();
         },
         buildStylesheet: function() {
             ytwp.log('buildStylesheet');
-            //--- Browser Scrollbar
+            ytwp.event._styleScrollbar();
+            ytwp.event._stylePlayer();
+            ytwp.event._styleSidebar();
+            ytwp.event._styleMasthead();
+            ytwp.event._styleMiniplayer();
+            ytwp.event._styleMisc();
+            ytwp.event._stylePlaylistBar();
+            ytwp.event._styleMaterialUI();
+        },
+
+        _styleScrollbar: function() {
             // Chrome/Webkit
             ytwp.style.appendRule(scriptBodySelector + '::-webkit-scrollbar', {
                 'width': '0 !important',
@@ -404,9 +397,10 @@
             ytwp.style.appendRule('html', {
                 'scrollbar-width': 'none',
             });
+        },
 
-            //--- Video Player
-            var d;
+        _stylePlayer: function() {
+            let d;
             d = buildVenderPropertyDict(transitionProperties, 'left 0s linear, padding-left 0s linear');
             d['padding'] = '0 !important';
             d['margin'] = '0 !important';
@@ -417,18 +411,15 @@
                 scriptBodySelector + '.ltr.ytcenter-site-center.ytcenter-non-resize.ytcenter-guide-visible.guide-collapsed #player-legacy',
                 scriptBodySelector + '.ltr.ytcenter-site-center.ytcenter-non-resize.ytcenter-guide-visible.guide-collapsed #watch7-main-container',
             ], d);
-            //
-            d = buildVenderPropertyDict(transitionProperties, 'width 0s linear, left 0s linear');
 
+            d = buildVenderPropertyDict(transitionProperties, 'width 0s linear, left 0s linear');
             // Bugfix for Firefox
             // Parts of the header (search box) are hidden under the player.
             // Firefox doesn't seem to be using the fixed header+guide yet.
             d['float'] = 'initial';
-
             // Skinny mode
             d['left'] = 0;
             d['margin-left'] = 0;
-
             ytwp.style.appendRule(scriptBodySelector + ' #player-api', d);
 
             // Theater mode
@@ -436,9 +427,6 @@
                 'left': 'initial !important',
                 'margin-left': 'initial !important',
             });
-
-            // Hide the cinema/wide mode button since it's useless.
-            //ytwp.style.appendRule(scriptBodySelector + ' #movie_player .ytp-size-button', 'display', 'none');
 
             // !important is mainly for simplicity, but is needed to override the !important styling when the Guide is open due to:
             // .sidebar-collapsed #watch7-video, .sidebar-collapsed #watch7-main, .sidebar-collapsed .watch7-playlist { width: 945px!important; }
@@ -473,7 +461,7 @@
                 }
             );
 
-             ytwp.style.appendRule(
+            ytwp.style.appendRule(
                 [
                     scriptSelector + ' #player',
                     scriptSelector + ' .html5-main-video',
@@ -519,21 +507,21 @@
 
             // Fix the top right avatar button
             ytwp.style.appendRule(scriptSelector + ' button.ytp-button.ytp-cards-button', 'top', '0');
+        },
 
-
-            //--- Sidebar
+        _styleSidebar: function() {
             // Remove the transition delay as you can see it moving on page load.
-            d = buildVenderPropertyDict(transitionProperties, 'margin-top 0s linear, padding-top 0s linear');
+            const d = buildVenderPropertyDict(transitionProperties, 'margin-top 0s linear, padding-top 0s linear');
             d['margin-top'] = '0 !important';
             d['top'] = '0 !important';
             ytwp.style.appendRule(scriptSelector + ' #watch7-sidebar', d);
-
             ytwp.style.appendRule(scriptSelector + '.cardified-page #watch7-sidebar-contents', 'padding-top', '0');
+        },
 
-            //--- Absolutely position the fixed header.
-            // Masthead
+        _styleMasthead: function() {
+            // Absolutely position the fixed header.
             ytwp.style.appendRule('#skip-navigation.ytd-masthead', 'top', '-150vh'); // Normally -1000px can be shorter than screen (Issue #77)
-            d = buildVenderPropertyDict(transitionProperties, 'top 0s linear !important');
+            const d = buildVenderPropertyDict(transitionProperties, 'top 0s linear !important');
             ytwp.style.appendRule(scriptSelector + '.hide-header-transition #masthead-positioner', d);
             ytwp.style.appendRule(scriptSelector + '.' + viewingVideoClassId + ' #masthead-positioner', {
                 'position': 'absolute',
@@ -551,7 +539,6 @@
                 'top': 'calc(' + playerHeight + ' + 56px) !important',
                 'position': 'absolute !important',
             });
-
             // Guide
             // When watching the video, we need to line it up with the masthead.
             ytwp.style.appendRule(scriptSelector + '.' + viewingVideoClassId + ' #appbar-guide-menu', {
@@ -569,10 +556,9 @@
                 'top': '0 !important',
                 'position': 'static !important',
             });
+        },
 
-
-            //---
-            // MiniPlayer-Bar
+        _styleMiniplayer: function() {
             ytwp.style.appendRule(scriptSelector + ' #miniplayer-bar #player', {
                 'position': 'static',
             });
@@ -599,26 +585,27 @@
             ytwp.style.appendRule('.video-stream.html5-main-video', {
                 'top': '0 !important',
             });
+        },
 
-            //---
+        _styleMisc: function() {
             // Hide Scrollbars
             ytwp.style.appendRule(scriptSelector + '.' + topOfPageClassId, 'overflow-x', 'hidden');
 
-
-            //--- Fix Other Possible Style Issues
+            // Fix Other Possible Style Issues
             ytwp.style.appendRule(scriptSelector + ' #placeholder-player', 'display', 'none');
             ytwp.style.appendRule(scriptSelector + ' #watch-sidebar-spacer', 'display', 'none');
             ytwp.style.appendRule(scriptSelector + ' .skip-nav', 'display', 'none');
 
-            //--- Whitespace Leftover From Moving The Video
+            // Whitespace Leftover From Moving The Video
             ytwp.style.appendRule(scriptSelector + ' #page.watch', 'padding-top', '0');
             ytwp.style.appendRule(scriptSelector + ' .player-branded-banner', 'height', '0');
 
-            //--- Youtube+ Compatiblity
+            // Youtube+ Compatibility
             ytwp.style.appendRule(scriptSelector + ' #body-container', 'position', 'static');
             ytwp.style.appendRule(scriptHtmlSelector + '.part_static_size:not(.content-snap-width-skinny-mode) ' + scriptBodySelector + ' .watch-non-stage-mode #player-playlist', 'width', '1066px');
+        },
 
-            //--- Playlist Bar
+        _stylePlaylistBar: function() {
             ytwp.style.appendRule([
                 scriptSelector + ' #placeholder-playlist',
                 scriptSelector + ' #player .player-height#watch-appbar-playlist',
@@ -627,7 +614,7 @@
                 'max-height': '540px !important',
             });
 
-            d = buildVenderPropertyDict(transitionProperties, 'transform 0s linear');
+            let d = buildVenderPropertyDict(transitionProperties, 'transform 0s linear');
             ytwp.style.appendRule(scriptSelector + ' #watch-appbar-playlist', d);
             d = buildVenderPropertyDict(transformProperties, 'translateY(0px)');
             d['margin-left'] = '0';
@@ -643,22 +630,19 @@
                 'left': 'calc((100vw - 1066px)/2 + 640px + 10px)',
                 'width': '416px',
             });
-            ytwp.style.stylesheet += '@media screen and (min-height: 630px) and (min-width: 1294px) {\n';
+            ytwp.style.appendRaw('@media screen and (min-height: 630px) and (min-width: 1294px) {\n');
             ytwp.style.appendRule(scriptSelector + ' #player .player-height#watch-appbar-playlist', {
                 'left': 'calc((100vw - 1280px)/2 + 854px + 10px)',
             });
-            ytwp.style.stylesheet += '}\n @media screen and (min-width: 1720px) and (min-height:980px) {\n';
+            ytwp.style.appendRaw('}\n @media screen and (min-width: 1720px) and (min-height:980px) {\n');
             ytwp.style.appendRule(scriptSelector + ' #player .player-height#watch-appbar-playlist', {
                 'left': 'calc((100vw - 1706px)/2 + 1280px + 10px)',
             });
-            ytwp.style.stylesheet += '}\n';
+            ytwp.style.appendRaw('}\n');
+        },
 
-            //---
-            // Material UI
+        _styleMaterialUI: function() {
             ytwp.style.appendRule(scriptSelector + '.ytwp-scrolltop #extra-buttons', 'display', 'none !important');
-            // ytwp.style.appendRule('body > #player:not(.ytd-watch)', 'display', 'none');
-            // ytwp.style.appendRule('body.ytwp-viewing-video #content:not(app-header-layout) ytd-page-manager', 'margin-top', '0 !important');
-            // ytwp.style.appendRule('.ytd-watch-0 #content-separator.ytd-watch', 'margin-top', '0');
             ytwp.style.appendRule('ytd-app', 'position', 'static !important');
             ytwp.style.appendRule('ytd-watch #top', 'margin-top', '71px !important'); // 56px (topnav height) + 15px (margin)
             ytwp.style.appendRule('ytd-watch #container', 'margin-top', '0 !important');
@@ -690,7 +674,6 @@
             });
             ytwp.style.appendRule(scriptSelector + ' .ytp-cued-thumbnail-overlay', 'z-index', '10');
 
-            //---
             // Flexy UI
             ytwp.style.appendRule([
                 scriptSelector + ' ytd-watch-flexy[theater] #player-theater-container.ytd-watch-flexy',
@@ -699,11 +682,6 @@
                 'position': 'absolute',
                 'top': '0',
             });
-            // Youtube seems to be ignoring the margin/padding top in certain elements for some reason (Issue #88)
-            // ytwp.style.appendRule([
-            //     scriptSelector + ' ytd-watch-flexy',
-            //     scriptSelector + ' ytd-watch-grid',
-            // ], 'padding-top', '71px'); // 56px (topnav height) + 15px (margin)
             ytwp.style.appendRule('#page-manager.ytd-app', 'padding-top', 'var(--ytd-masthead-height,var(--ytd-toolbar-height))');
             ytwp.style.appendRule(scriptSelector + ' #error-screen', 'z-index', '11');
         },
@@ -725,6 +703,8 @@
             ytwp.initialized = false;
             ytwp.pageReady = false;
             ytwp.isWatchPage = false;
+            ytwp.stopMaintenanceTimer();
+            ytwp.disconnectPlayerObservers();
         },
         addBodyClass: function() {
             // Insert CSS Into the body so people can style around the effects of this script.
@@ -737,30 +717,9 @@
         },
     };
 
-    ytwp.html5PlayerFix = function() {
-        ytwp.log('html5PlayerFix');
-        return;
-
-        try {
-            if (!uw.ytcenter // Youtube Center
-                && !uw.html5Patched // Youtube+
-                && (!ytwp.html5.app)
-                && (uw.ytplayer && uw.ytplayer.config)
-                && (uw.yt && uw.yt.player && uw.yt.player.Application && uw.yt.player.Application.create)
-            ) {
-                ytwp.html5.app = ytwp.html5.getPlayerInstance();
-            }
-
-            ytwp.html5.update();
-            ytwp.html5.autohideControls();
-        } catch (e) {
-            ytwp.error(e);
-        }
-    }
-
     ytwp.fixMasthead = function() {
         ytwp.log('fixMasthead');
-        var el = document.querySelector('#masthead-positioner-height-offset');
+        const el = document.querySelector('#masthead-positioner-height-offset');
         if (el) {
             ytwp.fixMastheadElement(el);
         }
@@ -770,15 +729,17 @@
         if (el.style.height) { // != ""
             setTimeout(function(){
                 el.style.height = ""
-                document.querySelector('#appbar-guide-menu').style.marginTop = "";
+                const guideMenu = document.querySelector('#appbar-guide-menu');
+                if (guideMenu) {
+                    guideMenu.style.marginTop = "";
+                }
             }, 0);
         }
     }
 
     JSStyleSheet.injectIntoHeader(scriptStyleId + '-focusfix', 'input#search[autofocus] { display: none; }');
     ytwp.removeSearchAutofocus = function() {
-        var e = document.querySelector('input#search');
-        // ytwp.log('removeSearchAutofocus', e)
+        const e = document.querySelector('input#search');
         if (e) {
             e.removeAttribute('autofocus')
         }
@@ -791,13 +752,15 @@
         observe('#masthead-positioner-height-offset', {
             attributes: true,
         }, function(mutation) {
-            console.log(mutation.type, mutation)
             if (mutation.attributeName === 'style') {
-                var el = mutation.target;
+                const el = mutation.target;
                 if (el.style.height) { // != ""
                     setTimeout(function(){
                         el.style.height = ""
-                        document.querySelector('#appbar-guide-menu').style.marginTop = "";
+                        const guideMenu = document.querySelector('#appbar-guide-menu');
+                        if (guideMenu) {
+                            guideMenu.style.marginTop = "";
+                        }
                     }, 0);
                 }
 
@@ -806,8 +769,21 @@
     }
 
     //--- Material UI
+    const INIT_RETRY_MAX = 20; // 20 retries x 100ms = 2 seconds max wait
+
+    ytwp.initRetryCount = 0;
+
+    // Entry point called by navigation events and on first load.
+    // Resets the retry counter so each new navigation gets a fresh 2-second window.
     ytwp.materialPageTransition = function() {
         ytwp.log('materialPageTransition')
+        ytwp.initRetryCount = 0;
+        ytwp.materialPageTransitionAttempt();
+    };
+
+    // Contains the actual transition logic. Called immediately by materialPageTransition,
+    // and retried up to INIT_RETRY_MAX times when the player is not yet in the DOM.
+    ytwp.materialPageTransitionAttempt = function() {
         ytwp.init();
 
         if (ytwp.isWatchUrl()) {
@@ -815,16 +791,17 @@
             if (enableOnLoad) {
                 ytwp.event.addBodyClass();
             }
-            // if (!ytwp.html5.app) {
             if (!ytwp.initialized) {
-                ytwp.log('materialPageTransition !ytwp.html5.app', ytwp.html5.app)
-                setTimeout(ytwp.materialPageTransition, 100);
+                if (ytwp.initRetryCount < INIT_RETRY_MAX) {
+                    ytwp.initRetryCount++;
+                    ytwp.log('materialPageTransition: player not ready, retry ' + ytwp.initRetryCount + '/' + INIT_RETRY_MAX)
+                    setTimeout(ytwp.materialPageTransitionAttempt, 100);
+                } else {
+                    ytwp.error('materialPageTransition: player did not appear after ' + INIT_RETRY_MAX + ' retries, giving up')
+                }
+            } else {
+                ytwp.observePlayer();
             }
-            // Focus player
-            // var moviePlayer = document.querySelector('#movie_player')
-            // if (moviePlayer) {
-            //     moviePlayer.click()
-            // }
         } else {
             ytwp.event.onDispose();
             document.body.classList.remove(scriptBodyClassId);
@@ -841,76 +818,98 @@
     };
 
     ytwp.registerMaterialListeners = function() {
-        // For Material UI
-        // HistoryEvent.listeners.push(ytwp.materialPageTransition);
-        // HistoryEvent.startTimer();
-        // HistoryEvent.inject();
-        // HistoryEvent.listeners.push(console.log.bind(console));
-        document.addEventListener('yt-page-data-fetched', ytwp.materialPageTransition)
+        // yt-navigate-finish fires once per navigation when the new page is committed.
+        // yt-page-data-fetched fires earlier (data ready, DOM still rendering) and also
+        // on the same navigation — registering both caused materialPageTransition to run
+        // twice per page change. yt-navigate-finish alone is the correct trigger.
         document.addEventListener('yt-navigate-finish', ytwp.materialPageTransition)
-
-        // Debugging
-        // document.addEventListener('yt-navigate-start', function(e){ ytwp.log('document.yt-navigate-start', e)})
-        document.addEventListener('yt-page-data-fetched', function(e){ ytwp.log('document.yt-page-data-fetched', e)})
-        document.addEventListener('yt-navigate-finish', function(e){ ytwp.log('document.yt-navigate-finish', e)})
-        // document.addEventListener('yt-navigate-error', function(e){ ytwp.log('document.yt-navigate-error', e)})
-        // document.addEventListener('yt-navigate-cache', function(e){ ytwp.log('document.yt-navigate-cache', e)})
-        // document.addEventListener('yt-navigate-redirect', function(e){ ytwp.log('document.yt-navigate-redirect', e)})
-        // document.addEventListener('yt-navigate-action', function(e){ ytwp.log('document.yt-navigate-action', e)})
-        // document.addEventListener('yt-navigate-home-action', function(e){ ytwp.log('document.yt-navigate-home-action', e)})
     };
+
+    ytwp.disconnectPlayerObservers = function() {
+        clearTimeout(ytwp.playerObserverRefreshTimer);
+        clearTimeout(ytwp.playerUpdateTimer);
+        ytwp.playerObservers.forEach(function(obs) {
+            if (obs) {
+                obs.disconnect();
+            }
+        });
+        ytwp.playerObservers = [];
+    };
+
+    ytwp.startMaintenanceTimer = function() {
+        if (ytwp.maintenanceTimerId) {
+            return;
+        }
+        ytwp.maintenanceTimerId = setInterval(ytwp.updatePlayer, 5000);
+    };
+
+    ytwp.stopMaintenanceTimer = function() {
+        if (!ytwp.maintenanceTimerId) {
+            return;
+        }
+        clearInterval(ytwp.maintenanceTimerId);
+        ytwp.maintenanceTimerId = 0;
+    };
+
+    ytwp.observePlayer = function() {
+        ytwp.disconnectPlayerObservers();
+
+        function scheduleObserverRefresh() {
+            clearTimeout(ytwp.playerObserverRefreshTimer);
+            ytwp.playerObserverRefreshTimer = setTimeout(function() {
+                ytwp.observePlayer();
+                ytwp.updatePlayer();
+            }, 50);
+        }
+
+        function schedulePlayerUpdate() {
+            clearTimeout(ytwp.playerUpdateTimer);
+            ytwp.playerUpdateTimer = setTimeout(ytwp.updatePlayer, 50);
+        }
+
+        ytwp.playerObservers.push(observe('ytd-page-manager', { childList: true }, scheduleObserverRefresh));
+
+        const watchElement = ytwp.getActiveWatchElement();
+        if (watchElement) {
+            ytwp.playerObservers.push(observe(watchElement, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['theater', 'hidden'],
+            }, schedulePlayerUpdate));
+        }
+    }
 
     ytwp.main = function() {
         ytwp.registerListeners();
-        ytwp.init();
-        ytwp.fixMasthead();
+        ytwp.materialPageTransition();
     };
 
-    ytwp.main();
-
-    // ytwp.updatePlayerTimerId = 0;
-    ytwp.updatePlayerAttempts = -1;
-    ytwp.updatePlayerMaxAttempts = 150; // 60fps = 2.5sec
     ytwp.attemptToUpdatePlayer = function() {
-        // console.log('ytwp.attemptToUpdatePlayer')
-        if (0 <= ytwp.updatePlayerAttempts && ytwp.updatePlayerAttempts < ytwp.updatePlayerMaxAttempts) {
-            ytwp.updatePlayerAttempts = 0;
-        } else {
-            ytwp.updatePlayerAttempts = 0;
-            ytwp.attemptToUpdatePlayerTick();
-        }
-        // setTimeout(ytwp.updatePlayer, 10000); /// Just in case it's not caught
-    }
-    ytwp.attemptToUpdatePlayerTick = function() {
-        // console.log('ytwp.attemptToUpdatePlayerTick', ytwp.updatePlayerAttempts)
-        if (ytwp.updatePlayerAttempts < ytwp.updatePlayerMaxAttempts) {
-            ytwp.updatePlayerAttempts += 1;
-            ytwp.updatePlayer();
-            // ytwp.updatePlayerTimerId = setTimeout(ytwp.attemptToUpdatePlayerTick, 200);
-            requestAnimationFrame(ytwp.attemptToUpdatePlayerTick);
-        }
+        ytwp.updatePlayer();
     }
 
     ytwp.updatePlayer = function() {
-        ytwp.removeSearchAutofocus();
+        if (!ytwp.isWatchPage) {
+            return;
+        }
         ytwp.enterTheaterMode();
         ytwp.detectPlayerUnavailable();
     }
 
+    ytwp.main();
+
     ytwp.toggleExtension = function() {
-        document.body.classList.toggle('ytwp-window-player')
-        ytwp.setTheaterMode(document.body.classList.contains('ytwp-window-player'))
+        const enable = !document.body.classList.contains(scriptBodyClassId);
+        document.body.classList.toggle(scriptBodyClassId, enable);
+        ytwp.onScroll();
+        ytwp.setTheaterMode(enable);
     }
 
-
     //--- Main
-    ytwp.materialPageTransition()
-    setInterval(ytwp.updatePlayer, 2500);
-
-
     //--- Keyboard Shortcut
     function childOf(child, ancestor) {
-        var parent = child.parentNode
+        let parent = child.parentNode
         while (parent) {
             if (parent == ancestor) {
                 return true
@@ -920,17 +919,16 @@
         return false
     }
     function cancelIfToggleKey(validKeyCallback, e) {
-        var isKey = e.key === scriptToggleKey
-        var validTarget = (
+        if (e.key !== scriptToggleKey) return
+        const validTarget = (
             e.target === document.body
             || e.target.id === 'player-api'
             || e.target.id === 'movie_player'
             || childOf(e.target, document.querySelector('#movie_player'))
         )
-        if (validTarget && isKey) {
+        if (validTarget) {
             e.preventDefault()
             e.stopPropagation()
-            console.log('cancelIfToggleKey.validKeyCallback', validKeyCallback, 'e', e)
             if (validKeyCallback) {
                 validKeyCallback()
             }
@@ -938,10 +936,6 @@
     }
     window.addEventListener('keydown', cancelIfToggleKey.bind(null, ytwp.toggleExtension), true)
     window.addEventListener('keyup', cancelIfToggleKey.bind(null, null), true)
-    // Note: keypress is deprecated
-    // https://developer.mozilla.org/en-US/docs/Web/API/Element/keypress_event
-    window.addEventListener('keypress', cancelIfToggleKey.bind(null, null), true)
-
 
     //--- Browser Extension
     if (typeof browser !== "undefined") {
@@ -957,5 +951,4 @@
             }
         });
     }
-
 })(window);
